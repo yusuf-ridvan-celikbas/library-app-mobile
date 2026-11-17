@@ -1,29 +1,34 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { api } from './client';
+import * as booksRepo from '@/db/repo/books';
+import * as circulation from '@/db/repo/circulation';
+import * as reading from '@/db/repo/reading';
+import * as reference from '@/db/repo/reference';
+import { lookupAndCreateBook } from '@/lib/isbn';
+import { updateReadingWidget } from '@/widgets/updateReadingWidget';
+
 import type {
-  ApiArrayResponse,
-  ApiItemResponse,
   Author,
   Book,
   BookStatus,
   BorrowedBook,
   Borrower,
   GoalPeriod,
-  Loan,
   Location,
-  PaginatedResponse,
   Publisher,
-  ReadingGoal,
-  ReadingSession,
-  ReadingStats,
   ReadingStatus,
-  RemindersResponse,
   Tag,
   WishlistItem,
 } from './types';
 
-/** Tek bir yerden yönetilen sorgu anahtarları — invalidation kolay olsun. */
+/*
+ * Tüm veri artık telefondaki SQLite veritabanında (src/db). Bu dosya
+ * ekranların kullandığı react-query kancalarını sağlar — kanca adları ve
+ * döndürdükleri şekiller sunuculu sürümle AYNI, böylece ekranlar
+ * değişmeden çalışır. Önbellek "staleTime: Infinity": veri sadece bu
+ * uygulama içinden değişir, değiştiğinde ilgili sorgular geçersiz kılınır.
+ */
+
 export const keys = {
   books: ['books'] as const,
   book: (id: string) => ['books', 'detail', id] as const,
@@ -39,7 +44,7 @@ export const keys = {
 };
 
 /** Bir kitabı etkileyen her değişiklikten sonra tazelenmesi gereken her şey. */
-function useInvalidateLibrary() {
+export function useInvalidateLibrary() {
   const qc = useQueryClient();
   return () =>
     Promise.all([
@@ -50,6 +55,7 @@ function useInvalidateLibrary() {
       qc.invalidateQueries({ queryKey: ['stats'] }),
       qc.invalidateQueries({ queryKey: keys.overview }),
       qc.invalidateQueries({ queryKey: keys.reminders }),
+      updateReadingWidget(),
     ]);
 }
 
@@ -70,20 +76,16 @@ export function useBooks(filters: BookFilters) {
   return useInfiniteQuery({
     queryKey: [...keys.books, 'list', filters],
     initialPageParam: 1,
-    queryFn: ({ pageParam, signal }) => {
-      const params = new URLSearchParams({ per_page: String(PAGE_SIZE), page: String(pageParam) });
-      Object.entries(filters).forEach(([k, v]) => v && params.set(k, String(v).trim()));
-      return api.get<PaginatedResponse<Book>>(`/books?${params}`, signal);
-    },
+    queryFn: ({ pageParam }) => booksRepo.listBooks(filters, pageParam, PAGE_SIZE),
     getNextPageParam: (last) => (last.meta.current_page < last.meta.last_page ? last.meta.current_page + 1 : undefined),
   });
 }
 
-/** Ana sayfa için: sadece toplam sayı + son eklenenler (tek küçük istek). */
+/** Ana sayfa için: son eklenenler (ve toplam sayı). */
 export function useRecentBooks() {
   return useQuery({
     queryKey: [...keys.books, 'recent'],
-    queryFn: () => api.get<PaginatedResponse<Book>>('/books?per_page=10&page=1'),
+    queryFn: () => booksRepo.listBooks({}, 1, 10),
   });
 }
 
@@ -91,7 +93,7 @@ export function useBook(id: string | undefined) {
   return useQuery({
     queryKey: keys.book(id ?? ''),
     enabled: !!id,
-    queryFn: () => api.get<ApiItemResponse<Book>>(`/books/${id}`).then((r) => r.data),
+    queryFn: () => booksRepo.getBook(id!),
   });
 }
 
@@ -115,11 +117,7 @@ export type BookPayload = {
 export function useSaveBook() {
   const invalidate = useInvalidateLibrary();
   return useMutation({
-    mutationFn: ({ id, payload }: { id?: string; payload: Partial<BookPayload> }) =>
-      (id
-        ? api.put<ApiItemResponse<Book>>(`/books/${id}`, payload)
-        : api.post<ApiItemResponse<Book>>('/books', payload)
-      ).then((r) => r.data),
+    mutationFn: ({ id, payload }: { id?: string; payload: Partial<BookPayload> }): Promise<Book> => booksRepo.saveBook(id, payload),
     onSuccess: invalidate,
   });
 }
@@ -127,7 +125,7 @@ export function useSaveBook() {
 export function useDeleteBook() {
   const invalidate = useInvalidateLibrary();
   return useMutation({
-    mutationFn: (id: string) => api.delete(`/books/${id}`),
+    mutationFn: (id: string) => booksRepo.deleteBook(id),
     onSuccess: invalidate,
   });
 }
@@ -135,19 +133,19 @@ export function useDeleteBook() {
 export function useScanIsbn() {
   const invalidate = useInvalidateLibrary();
   return useMutation({
-    mutationFn: (isbn: string) => api.post<ApiItemResponse<Book>>('/books/scan-isbn', { isbn }).then((r) => r.data),
+    mutationFn: (isbn: string) => lookupAndCreateBook(isbn),
     onSuccess: invalidate,
   });
 }
 
 // ------------------------------------------------------ Referans verileri
 
-function useReference<T>(name: string) {
+type RefName = reference.ReferenceName;
+
+function useReference<T>(name: RefName) {
   return useQuery({
     queryKey: keys.reference(name),
-    staleTime: 5 * 60_000,
-    // Sayfalı ve sayfasız uç noktaların ikisi de { data: [...] } döner.
-    queryFn: () => api.get<ApiArrayResponse<T>>(`/${name}?per_page=1000`).then((r) => r.data),
+    queryFn: () => reference.listReference(name) as Promise<T[]>,
   });
 }
 
@@ -157,19 +155,18 @@ export const useLocations = () => useReference<Location>('locations');
 export const useTags = () => useReference<Tag>('tags');
 export const useBorrowers = () => useReference<Borrower>('borrowers');
 
-export function useCreateReference<T>(name: 'authors' | 'publishers' | 'locations' | 'tags' | 'borrowers') {
+export function useCreateReference<T extends { id: string }>(name: RefName) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (payload: Record<string, unknown>) =>
-      api.post<ApiItemResponse<T>>(`/${name}`, payload).then((r) => r.data),
+    mutationFn: (payload: Record<string, unknown>) => reference.saveReference(name, undefined, payload) as Promise<Pick<T, 'id'>>,
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.reference(name) }),
   });
 }
 
-export function useUpdateReference(name: 'authors' | 'publishers' | 'locations' | 'tags' | 'borrowers') {
+export function useUpdateReference(name: RefName) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, payload }: { id: string; payload: Record<string, unknown> }) => api.put(`/${name}/${id}`, payload),
+    mutationFn: ({ id, payload }: { id: string; payload: Record<string, unknown> }) => reference.saveReference(name, id, payload),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.reference(name) });
       void qc.invalidateQueries({ queryKey: keys.books });
@@ -177,11 +174,14 @@ export function useUpdateReference(name: 'authors' | 'publishers' | 'locations' 
   });
 }
 
-export function useDeleteReference(name: 'authors' | 'publishers' | 'locations' | 'tags' | 'borrowers') {
+export function useDeleteReference(name: RefName) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.delete(`/${name}/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: keys.reference(name) }),
+    mutationFn: (id: string) => reference.deleteReference(name, id),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.reference(name) });
+      void qc.invalidateQueries({ queryKey: keys.books });
+    },
   });
 }
 
@@ -190,12 +190,7 @@ export function useDeleteReference(name: 'authors' | 'publishers' | 'locations' 
 export function useSessions(params: { book_id?: string; status?: ReadingStatus }) {
   return useQuery({
     queryKey: [...keys.sessions, params],
-    queryFn: () => {
-      const q = new URLSearchParams({ per_page: '100' });
-      if (params.book_id) q.set('book_id', params.book_id);
-      if (params.status) q.set('status', params.status);
-      return api.get<PaginatedResponse<ReadingSession>>(`/reading-sessions?${q}`).then((r) => r.data);
-    },
+    queryFn: () => reading.listSessions(params),
   });
 }
 
@@ -210,8 +205,7 @@ export type SessionPayload = {
 export function useSaveSession() {
   const invalidate = useInvalidateLibrary();
   return useMutation({
-    mutationFn: ({ id, bookId, payload }: { id?: string; bookId: string; payload: SessionPayload }) =>
-      id ? api.put(`/reading-sessions/${id}`, payload) : api.post('/reading-sessions', { book_id: bookId, ...payload }),
+    mutationFn: ({ id, bookId, payload }: { id?: string; bookId: string; payload: SessionPayload }) => reading.saveSession(id, bookId, payload),
     onSuccess: invalidate,
   });
 }
@@ -219,16 +213,13 @@ export function useSaveSession() {
 // ------------------------------------------------------------------ Emanet
 
 export function useLoans() {
-  return useQuery({
-    queryKey: keys.loans,
-    queryFn: () => api.get<PaginatedResponse<Loan>>('/loans?per_page=200').then((r) => r.data),
-  });
+  return useQuery({ queryKey: keys.loans, queryFn: circulation.listLoans });
 }
 
 export function useLendBook() {
   const invalidate = useInvalidateLibrary();
   return useMutation({
-    mutationFn: (payload: { book_id: string; borrower_id: string; due_at?: string | null }) => api.post('/loans', payload),
+    mutationFn: (payload: { book_id: string; borrower_id: string; due_at?: string | null }) => circulation.lendBook(payload),
     onSuccess: invalidate,
   });
 }
@@ -236,7 +227,7 @@ export function useLendBook() {
 export function useReturnLoan() {
   const invalidate = useInvalidateLibrary();
   return useMutation({
-    mutationFn: (loanId: string) => api.patch(`/loans/${loanId}/return`),
+    mutationFn: (loanId: string) => circulation.returnLoan(loanId),
     onSuccess: invalidate,
   });
 }
@@ -244,16 +235,13 @@ export function useReturnLoan() {
 // ---------------------------------------------------- Hedefler / istatistik
 
 export function useGoals() {
-  return useQuery({
-    queryKey: keys.goals,
-    queryFn: () => api.get<ApiArrayResponse<ReadingGoal>>('/reading-goals').then((r) => r.data),
-  });
+  return useQuery({ queryKey: keys.goals, queryFn: reading.listGoals });
 }
 
 export function useCreateGoal() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (payload: { period_type: GoalPeriod; target_books: number }) => api.post('/reading-goals', payload),
+    mutationFn: (payload: { period_type: GoalPeriod; target_books: number }) => reading.createGoal(payload.period_type, payload.target_books),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.goals }),
   });
 }
@@ -261,57 +249,35 @@ export function useCreateGoal() {
 export function useDeleteGoal() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.delete(`/reading-goals/${id}`),
+    mutationFn: (id: string) => reading.deleteGoal(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.goals }),
   });
 }
 
 export function useStats(year?: number) {
-  return useQuery({
-    queryKey: keys.stats(year),
-    queryFn: () => api.get<ReadingStats>(`/reading-stats${year ? `?year=${year}` : ''}`),
-  });
+  return useQuery({ queryKey: keys.stats(year), queryFn: () => reading.computeStats(year) });
 }
 
-export type LibraryOverview = {
-  total_books: number;
-  read_books: number;
-  unread_books: number;
-  total_pages: number;
-  read_pages: number;
-  unread_pages: number;
-  publisher_distribution: { name: string; count: number }[];
-  author_distribution: { name: string; count: number }[];
-};
+export type LibraryOverview = Awaited<ReturnType<typeof reading.computeOverview>>;
 
 export function useOverview() {
-  return useQuery({
-    queryKey: keys.overview,
-    queryFn: () => api.get<ApiItemResponse<LibraryOverview>>('/library-overview').then((r) => r.data),
-  });
+  return useQuery({ queryKey: keys.overview, queryFn: reading.computeOverview });
 }
 
 export function useReminders() {
-  return useQuery({
-    queryKey: keys.reminders,
-    queryFn: () => api.get<RemindersResponse>('/reminders'),
-  });
+  return useQuery({ queryKey: keys.reminders, queryFn: circulation.computeReminders });
 }
 
 // --------------------------------------------------------------- Alınacaklar
 
 export function useWishlist() {
-  return useQuery({
-    queryKey: keys.wishlist,
-    queryFn: () => api.get<ApiArrayResponse<WishlistItem>>('/wishlist').then((r) => r.data),
-  });
+  return useQuery({ queryKey: keys.wishlist, queryFn: circulation.listWishlist });
 }
 
 export function useSaveWishlistItem() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, payload }: { id?: string; payload: Partial<WishlistItem> }) =>
-      id ? api.put(`/wishlist/${id}`, payload) : api.post('/wishlist', payload),
+    mutationFn: ({ id, payload }: { id?: string; payload: Partial<WishlistItem> }) => circulation.saveWishlistItem(id, payload),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.wishlist }),
   });
 }
@@ -319,7 +285,7 @@ export function useSaveWishlistItem() {
 export function useDeleteWishlistItem() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.delete(`/wishlist/${id}`),
+    mutationFn: (id: string) => circulation.deleteWishlistItem(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.wishlist }),
   });
 }
@@ -328,7 +294,7 @@ export function useConvertWishlistItem() {
   const qc = useQueryClient();
   const invalidate = useInvalidateLibrary();
   return useMutation({
-    mutationFn: (id: string) => api.post<ApiItemResponse<Book>>(`/wishlist/${id}/convert`).then((r) => r.data),
+    mutationFn: (id: string) => circulation.convertWishlistItem(id),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.wishlist });
       void invalidate();
@@ -339,39 +305,39 @@ export function useConvertWishlistItem() {
 // ------------------------------------------------------ Ödünç aldıklarım
 
 export function useBorrowedBooks() {
-  return useQuery({
-    queryKey: keys.borrowed,
-    queryFn: () => api.get<ApiArrayResponse<BorrowedBook>>('/borrowed-books').then((r) => r.data),
-  });
+  return useQuery<BorrowedBook[]>({ queryKey: keys.borrowed, queryFn: circulation.listBorrowed });
+}
+
+function useInvalidateBorrowed() {
+  const qc = useQueryClient();
+  return () => {
+    void qc.invalidateQueries({ queryKey: keys.borrowed });
+    void qc.invalidateQueries({ queryKey: keys.reminders });
+    void qc.invalidateQueries({ queryKey: ['stats'] });
+    void qc.invalidateQueries({ queryKey: keys.goals });
+  };
 }
 
 export function useSaveBorrowedBook() {
-  const qc = useQueryClient();
+  const invalidate = useInvalidateBorrowed();
   return useMutation({
-    mutationFn: ({ id, payload }: { id?: string; payload: Record<string, unknown> }) =>
-      id ? api.put(`/borrowed-books/${id}`, payload) : api.post('/borrowed-books', payload),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: keys.borrowed });
-      void qc.invalidateQueries({ queryKey: keys.reminders });
-    },
+    mutationFn: ({ id, payload }: { id?: string; payload: Record<string, unknown> }) => circulation.saveBorrowed(id, payload),
+    onSuccess: invalidate,
   });
 }
 
 export function useReturnBorrowedBook() {
-  const qc = useQueryClient();
+  const invalidate = useInvalidateBorrowed();
   return useMutation({
-    mutationFn: (id: string) => api.patch(`/borrowed-books/${id}/return`),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: keys.borrowed });
-      void qc.invalidateQueries({ queryKey: keys.reminders });
-    },
+    mutationFn: (id: string) => circulation.returnBorrowed(id),
+    onSuccess: invalidate,
   });
 }
 
 export function useDeleteBorrowedBook() {
-  const qc = useQueryClient();
+  const invalidate = useInvalidateBorrowed();
   return useMutation({
-    mutationFn: (id: string) => api.delete(`/borrowed-books/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: keys.borrowed }),
+    mutationFn: (id: string) => circulation.deleteBorrowed(id),
+    onSuccess: invalidate,
   });
 }

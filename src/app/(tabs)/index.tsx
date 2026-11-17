@@ -3,18 +3,16 @@ import { useTranslation } from 'react-i18next';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
 import { useBooks, useGoals, useOverview, useRecentBooks, useReminders, useStats } from '@/api/hooks';
-import { useAuth } from '@/auth/AuthProvider';
 import { authorNames, Cover } from '@/components/book';
 import { ProgressRing } from '@/components/ProgressRing';
 import { ReminderRow } from '@/components/ReminderRow';
 import { Button, Card, ErrorState, Screen, SectionTitle, Txt } from '@/components/ui';
-import { useTheme } from '@/theme/SettingsProvider';
+import { useSettings } from '@/theme/SettingsProvider';
 import { space } from '@/theme/tokens';
 
 export default function HomeScreen() {
   const { t } = useTranslation();
-  const { colors } = useTheme();
-  const { user } = useAuth();
+  const { colors, settings } = useSettings();
 
   const reading = useBooks({ status: 'reading' });
   const recent = useRecentBooks();
@@ -26,7 +24,8 @@ export default function HomeScreen() {
   const readingBooks = reading.data?.pages.flatMap((p) => p.data) ?? [];
   const goal = goals.data?.find((g) => g.period_type === 'yearly') ?? goals.data?.[0];
   const year = stats.data?.year_stats;
-  const firstName = user?.name.split(' ')[0] ?? '';
+  const firstName = settings.name.split(' ')[0];
+  const greeting = firstName ? t('home.greeting', { name: firstName }) : t('home.greetingNoName');
 
   const refreshing = reading.isRefetching || stats.isRefetching;
   const refresh = () => {
@@ -40,7 +39,7 @@ export default function HomeScreen() {
 
   if (recent.isError && !recent.data) {
     return (
-      <Screen title={t('home.greeting', { name: firstName })}>
+      <Screen title={greeting}>
         <ErrorState error={recent.error} onRetry={refresh} />
       </Screen>
     );
@@ -48,7 +47,7 @@ export default function HomeScreen() {
 
   return (
     <Screen
-      title={t('home.greeting', { name: firstName })}
+      title={greeting}
       subtitle={overview.data ? t('home.subtitle', { count: overview.data.total_books }) : undefined}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.accent} />}
     >

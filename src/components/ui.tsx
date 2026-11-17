@@ -20,7 +20,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ApiError } from '@/api/client';
+import { LocalError } from '@/db';
 import { useTheme } from '@/theme/SettingsProvider';
 import { fonts, radius, space, text } from '@/theme/tokens';
 
@@ -362,10 +362,9 @@ export function Loading() {
 }
 
 export function errorMessage(err: unknown, t: (k: string) => string): string {
-  if (err instanceof ApiError) {
-    if (err.errorCode === 'NETWORK_ERROR') return t('common.networkError');
-    const firstField = err.fieldErrors && Object.values(err.fieldErrors)[0]?.[0];
-    return firstField ?? err.message;
+  if (err instanceof LocalError) {
+    if (err.code === 'NETWORK_ERROR') return t('common.networkError');
+    return err.message;
   }
   return t('common.genericError');
 }

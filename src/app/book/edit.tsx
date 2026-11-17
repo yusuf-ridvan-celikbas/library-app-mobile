@@ -3,7 +3,6 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
 
-import { ApiError } from '@/api/client';
 import {
   useAuthors,
   useBook,
@@ -16,6 +15,7 @@ import {
 } from '@/api/hooks';
 import type { Author, BookStatus, Publisher, Tag } from '@/api/types';
 import { PickerSheet, type PickerOption } from '@/components/Picker';
+import { LocalError } from '@/db';
 import { Button, Chip, Field, Loading, SelectBox, Txt } from '@/components/ui';
 import { isValidDate } from '@/lib/dates';
 import { useTheme } from '@/theme/SettingsProvider';
@@ -101,11 +101,11 @@ function BookForm({ id, initial }: { id?: string; initial: Form }) {
 
   const [form, setForm] = useState<Form>(initial);
   const [picker, setPicker] = useState<PickerKind | null>(null);
-  const [error, setError] = useState<ApiError | string | null>(null);
+  const [error, setError] = useState<LocalError | string | null>(null);
 
 
   const set = <K extends keyof Form>(k: K) => (v: Form[K]) => setForm((f) => ({ ...f, [k]: v }));
-  const fieldError = (k: string) => (error instanceof ApiError ? error.fieldError(k) : undefined);
+  const fieldError = (k: string) => (error instanceof LocalError && error.context?.field === k ? error.message : undefined);
 
   const options: Record<PickerKind, PickerOption[]> = {
     authors: (authors.data ?? []).map((a) => ({ id: a.id, label: a.name })),
@@ -151,7 +151,7 @@ function BookForm({ id, initial }: { id?: string; initial: Form }) {
       if (id) router.back();
       else router.replace(`/book/${book.id}`);
     } catch (err) {
-      setError(err instanceof ApiError ? err : t('common.genericError'));
+      setError(err instanceof LocalError ? err : t('common.genericError'));
     }
   }
 

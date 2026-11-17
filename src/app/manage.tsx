@@ -13,8 +13,8 @@ import {
   useTags,
   useUpdateReference,
 } from '@/api/hooks';
-import { ApiError } from '@/api/client';
 import { fold } from '@/components/Picker';
+import { LocalError } from '@/db';
 import { Button, Chip, errorMessage, Field, IconButton, Loading, SearchBar, Sheet, Txt } from '@/components/ui';
 import { useTheme } from '@/theme/SettingsProvider';
 import { space } from '@/theme/tokens';
@@ -118,7 +118,7 @@ function EditSheet({ kind, row, onClose }: { kind: Kind; row: Row | null; onClos
       await remove.mutateAsync(row.id);
       onClose();
     } catch (err) {
-      setError(err instanceof ApiError && err.status === 409 ? t('manage.inUse') : errorMessage(err, t));
+      setError(err instanceof LocalError && err.code === 'IN_USE' ? t('manage.inUse') : errorMessage(err, t));
     }
   }
 

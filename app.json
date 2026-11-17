@@ -41,13 +41,34 @@
           }
         }
       ],
-      "expo-secure-store",
       "expo-localization",
       [
         "expo-camera",
         {
           "cameraPermission": "Kitap barkodlarını okutmak için kamera kullanılır / The camera is used to scan book barcodes.",
           "recordAudioAndroid": false
+        }
+      ],
+      "expo-sqlite",
+      "expo-sharing",
+      [
+        "expo-widgets",
+        {
+          "enableAndroid": true,
+          "widgets": [
+            {
+              "name": "ReadingWidget",
+              "displayName": "EighteenEleven",
+              "description": "Şu an okuduğunuz kitaplar / Books you are currently reading",
+              "android": {
+                "targetCellWidth": 3,
+                "targetCellHeight": 2,
+                "minWidth": 180,
+                "minHeight": 110,
+                "initialLayout": "./src/widgets/ReadingWidget.tsx"
+              }
+            }
+          ]
         }
       ]
     ],

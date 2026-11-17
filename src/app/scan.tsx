@@ -7,9 +7,9 @@ import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ApiError } from '@/api/client';
 import { useScanIsbn } from '@/api/hooks';
 import { Button, errorMessage, Field, Screen, Txt } from '@/components/ui';
+import { LocalError } from '@/db';
 import { useTheme } from '@/theme/SettingsProvider';
 import { radius, space } from '@/theme/tokens';
 
@@ -43,9 +43,9 @@ export default function ScanScreen() {
       const book = await scan.mutateAsync(isbn);
       router.replace(`/book/${book.id}`);
     } catch (err) {
-      if (err instanceof ApiError && err.errorCode === 'BOOK_ALREADY_EXISTS' && err.context?.book_id) {
+      if (err instanceof LocalError && err.code === 'BOOK_ALREADY_EXISTS' && err.context?.book_id) {
         setResult({ kind: 'exists', bookId: String(err.context.book_id) });
-      } else if (err instanceof ApiError && (err.errorCode === 'ISBN_NOT_FOUND' || err.errorCode === 'EXTERNAL_SERVICE_UNAVAILABLE')) {
+      } else if (err instanceof LocalError && err.code === 'ISBN_NOT_FOUND') {
         setResult({ kind: 'notFound', isbn });
       } else {
         setResult({ kind: 'error', message: errorMessage(err, t) });

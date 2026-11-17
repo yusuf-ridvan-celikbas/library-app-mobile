@@ -1,8 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useColorScheme } from 'react-native';
 
-import { setApiUrl } from '@/api/client';
-import { DEFAULT_API_URL } from '@/config';
 import i18n, { deviceLanguage } from '@/i18n';
 import { loadSettings, saveSettings, type Settings } from '@/lib/storage';
 import { palettes, type Palette } from '@/theme/tokens';
@@ -18,7 +16,7 @@ type Ctx = {
 const SettingsContext = createContext<Ctx | null>(null);
 
 /**
- * Dil, tema, sunucu adresi gibi tercihleri yükler/saklar ve tema renk
+ * Dil, tema, görünüm ve ad tercihlerini yükler/saklar ve tema renk
  * paletini sağlar. Tercihler yüklenene kadar `ready=false` — kök layout
  * bu sürede splash ekranını açık tutar.
  */
@@ -28,13 +26,12 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<Required<Settings>>({
     language: deviceLanguage(),
     theme: 'system',
-    apiUrl: DEFAULT_API_URL,
     libraryView: 'list',
+    name: '',
   });
 
   const apply = useCallback((next: Required<Settings>) => {
     setSettings(next);
-    setApiUrl(next.apiUrl);
     if (i18n.language !== next.language) void i18n.changeLanguage(next.language);
   }, []);
 
@@ -43,8 +40,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       apply({
         language: stored.language ?? deviceLanguage(),
         theme: stored.theme ?? 'system',
-        apiUrl: stored.apiUrl ?? DEFAULT_API_URL,
         libraryView: stored.libraryView ?? 'list',
+        name: stored.name ?? '',
       });
       setReady(true);
     });
@@ -52,8 +49,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   const update = useCallback(
     async (patch: Settings) => {
-      const next = { ...settings, ...patch };
-      apply(next);
+      apply({ ...settings, ...patch });
       await saveSettings(patch);
     },
     [settings, apply],
