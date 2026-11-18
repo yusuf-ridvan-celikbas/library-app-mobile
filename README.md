@@ -1,56 +1,87 @@
-# Welcome to your Expo app 👋
+# EighteenEleven
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+A calm, fully offline **home library tracker** for Android (built with Expo / React Native).
 
-## Get started
+All data lives **on the phone** in a local SQLite database: no account, no login, no server. Turkish and English UI, light/dark theme.
 
-1. Install dependencies
+## Features
 
-   ```bash
-   npm install
-   ```
+- **Library**: search (accent-insensitive, e.g. `donusum` → *Dönüşüm*), status chips, filters by shelf / genre / author / publisher, list or grid view
+- **Add books**: scan the ISBN barcode (details fetched from Open Library → Google Books), or add manually with inline creation of authors, publishers and genres
+- **Book details**: start reading → finished (rating + note), change status, reading history
+- **Lending**: lend to a person with a due date, mark as returned; **borrowed books** you have from others
+- **Reminders**: overdue and soon-due loans / borrowed books
+- **Goals**: weekly / monthly / yearly reading goals with progress and suggested pages per day
+- **Statistics**: books and pages per year, monthly breakdown, pace, top authors and publishers
+- **Wishlist**: books to buy, with "bought it → add to library"
+- **Backup**: export the whole library as one JSON file (share sheet: Drive, email, Files) and import it back
+- **Home-screen widget**: "Currently reading" (Android)
 
-2. Start the app
+## What needs the internet?
 
-   ```bash
-   npx expo start
-   ```
+Nothing, except looking up book details from a barcode and loading cover images for scanned books. Everything else works in airplane mode.
 
-In the output, you'll find options to open the app in a
+## Tech
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+| | |
+|---|---|
+| Framework | Expo SDK 58, React Native, TypeScript, Expo Router (file-based routes in `src/app`) |
+| Data | `expo-sqlite` + `@tanstack/react-query` |
+| UI | Custom theme tokens (`src/theme`), Ionicons, `react-native-svg` |
+| Other | `expo-camera` (barcodes), `expo-widgets` (Android widget), `i18next` (TR/EN), `expo-file-system` + `expo-sharing` + `expo-document-picker` (backup) |
 
-You can start developing by editing the files inside the **src/app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
+```
+src/
+  app/          screens (Expo Router): (tabs)/, book/[id], book/edit, scan, settings, ...
+  api/hooks.ts  react-query hooks used by the screens
+  db/           SQLite schema, migrations and repositories (business rules + statistics)
+  lib/isbn.ts   barcode lookup (Open Library → Google Books)
+  widgets/      "Currently reading" home-screen widget
+  i18n/         Turkish and English strings
 ```
 
-This command will move the starter code to the **example** directory and create a blank **src/app** directory where you can start developing.
+## Development
 
-### Other setup steps
+```bash
+npm install
+npx expo run:android      # development build on a connected device (USB or wireless debugging)
+npx tsc --noEmit          # typecheck
+npx expo lint             # lint
+```
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+Expo Go is **not** enough: the app uses native modules (SQLite, widgets), so it needs a development or release build.
 
-## Learn more
+### Release build (standalone APK)
 
-To learn more about developing your project with Expo, look at the following resources:
+```bash
+npx expo prebuild --platform android
+cd android
+./gradlew app:assembleRelease -PreactNativeArchitectures=arm64-v8a
+adb install -r app/build/outputs/apk/release/app-release.apk
+```
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+### Building on Windows
 
-## Join the community
+Some native libraries have very long C++ build paths. If the build fails with `ninja: error: mkdir(...): No such file or directory`:
 
-Join our community of developers creating universal apps.
+1. Enable Windows long paths (admin PowerShell, then restart):
+   `New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name LongPathsEnabled -Value 1 -PropertyType DWORD -Force`
+2. Install CMake **3.31+** (Android Studio → SDK Manager → SDK Tools → CMake, or the official zip plus Ninja 1.12+ in its `bin`) and point the project at it in `android/local.properties`:
+   ```
+   cmake.dir=C\:/Users/<you>/AppData/Local/Android/Sdk/cmake/3.31.12
+   ```
+   `npx expo prebuild` can regenerate the `android/` folder, so re-add this line after it does.
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+## Moving data from the old web app
+
+The companion Laravel backend has a command that exports the full library in this app's backup format:
+
+```bash
+php artisan library:export-mobile --user=<email-or-id>
+```
+
+Copy the resulting JSON to the phone and use **Settings → Import backup**.
+
+## License
+
+No license: all rights reserved.
