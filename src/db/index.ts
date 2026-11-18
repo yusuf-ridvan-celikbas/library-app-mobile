@@ -7,7 +7,7 @@ import { SCHEMA_V1 } from './schema';
  * açılır ve şema göçleri (PRAGMA user_version) uygulanır.
  */
 const DB_NAME = 'eighteeneleven.db';
-const TARGET_VERSION = 1;
+const TARGET_VERSION = 2;
 
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
@@ -30,6 +30,17 @@ async function migrate(db: SQLite.SQLiteDatabase) {
   if (version === 0) {
     await db.execAsync(SCHEMA_V1);
     version = 1;
+  }
+  if (version === 1) {
+    // v2: kişiler ve kütüphaneler ayrılır (ödünç alınan kitap bir kişiden ya da
+    // bir kütüphaneden gelebilir). Daha önce "Kütüphane" adıyla kişi olarak
+    // eklenmiş kayıtlar otomatik olarak kütüphaneye çevrilir.
+    await db.execAsync(`
+      ALTER TABLE borrowers ADD COLUMN kind TEXT NOT NULL DEFAULT 'person';
+      UPDATE borrowers SET kind = 'library'
+        WHERE lower(name) LIKE '%library%' OR name LIKE '%ütüphane%' OR name LIKE '%ÜTÜPHANE%' OR lower(name) LIKE '%kutuphane%';
+    `);
+    version = 2;
   }
   await db.execAsync(`PRAGMA user_version = ${TARGET_VERSION}`);
 }

@@ -20,6 +20,7 @@ import {
 import type { BookStatus, Borrower, ReadingSession } from '@/api/types';
 import { authorNames, Cover, StarRating, StatusPill } from '@/components/book';
 import { PickerSheet } from '@/components/Picker';
+import { FromKindField } from '@/components/BorrowedSheet';
 import { SessionSheet } from '@/components/SessionSheet';
 import { Button, Card, Chip, Divider, ErrorState, Field, IconButton, Loading, SectionTitle, SelectBox, Sheet, Txt, errorMessage } from '@/components/ui';
 import { formatDate } from '@/i18n';
@@ -318,6 +319,7 @@ function ConvertToBorrowedSheet({ bookId, title, onClose }: { bookId: string; ti
   const [pickerOpen, setPickerOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const borrowerName = borrowers.data?.find((p) => p.id === borrowerId)?.name;
+  const [fromKind, setFromKind] = useState<'person' | 'library' | null>(null);
 
   async function submit() {
     if (!borrowerId) return;
@@ -337,7 +339,15 @@ function ConvertToBorrowedSheet({ bookId, title, onClose }: { bookId: string; ti
         <Txt muted style={{ marginBottom: space.lg }}>
           {t('book.convertDesc', { title })}
         </Txt>
-        <SelectBox label={t('borrowed.from')} value={borrowerName} placeholder={t('borrowed.fromPlaceholder')} onPress={() => setPickerOpen(true)} />
+        <FromKindField
+          kind={fromKind}
+          onKind={(k) => {
+            setFromKind(k);
+            setBorrowerId(null);
+          }}
+          value={borrowerName}
+          onOpen={() => setPickerOpen(true)}
+        />
         <Field label={`${t('loans.dueAt')} (${t('common.optional')})`} value={dueAt} onChangeText={setDueAt} placeholder="2026-12-31" keyboardType="numbers-and-punctuation" />
         {error ? (
           <Txt size="small" color={colors.danger} style={{ marginBottom: space.md }}>
@@ -349,11 +359,13 @@ function ConvertToBorrowedSheet({ bookId, title, onClose }: { bookId: string; ti
       <PickerSheet
         visible={pickerOpen}
         onClose={() => setPickerOpen(false)}
-        title={t('borrowed.from')}
-        options={(borrowers.data ?? []).map((p) => ({ id: p.id, label: p.name }))}
+        title={fromKind === 'library' ? t('borrowed.fromLibrary') : t('borrowed.fromPerson')}
+        options={(borrowers.data ?? [])
+          .filter((p) => (p.kind === 'library' ? 'library' : 'person') === fromKind)
+          .map((p) => ({ id: p.id, label: p.name }))}
         selected={borrowerId ? [borrowerId] : []}
         onChange={(ids) => setBorrowerId(ids[0] ?? null)}
-        onCreate={async (name) => (await createBorrower.mutateAsync({ name })).id}
+        onCreate={async (name) => (await createBorrower.mutateAsync({ name, kind: fromKind ?? 'person' })).id}
       />
     </>
   );
@@ -401,7 +413,7 @@ function LendSheet({ visible, onClose, bookId }: { visible: boolean; onClose: ()
         visible={pickerOpen}
         onClose={() => setPickerOpen(false)}
         title={t('loans.borrower')}
-        options={(borrowers.data ?? []).map((b) => ({ id: b.id, label: b.name }))}
+        options={(borrowers.data ?? []).filter((b) => b.kind !== 'library').map((b) => ({ id: b.id, label: b.name }))}
         selected={borrowerId ? [borrowerId] : []}
         onChange={(ids) => setBorrowerId(ids[0] ?? null)}
         onCreate={async (name) => (await createBorrower.mutateAsync({ name })).id}

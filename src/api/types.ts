@@ -54,6 +54,8 @@ export interface Borrower {
   phone: string | null;
   email: string | null;
   notes: string | null;
+  /** 'person' (kişi) ya da 'library' (kütüphane). Sadece mobil uygulamada. */
+  kind?: 'person' | 'library';
 }
 
 export interface Book {

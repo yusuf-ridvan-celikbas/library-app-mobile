@@ -48,7 +48,15 @@ export function BorrowedSheet({ book, prefill, onClose }: { book: BorrowedBook |
     reading_notes: book?.reading_notes ?? '',
   });
   const set = <K extends keyof typeof form>(k: K) => (v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }));
-  const borrowerName = borrowers.data?.find((b) => b.id === form.borrower_id)?.name;
+  const current = borrowers.data?.find((b) => b.id === form.borrower_id);
+  const borrowerName = current?.name;
+  // "Kimden?": önce Kişi mi Kütüphane mi seçilir, sonra sadece o türün listesi gösterilir.
+  const [fromKind, setFromKind] = useState<'person' | 'library' | null>(null);
+  const effectiveKind = fromKind ?? (current ? (current.kind === 'library' ? 'library' : 'person') : null);
+  function chooseKind(next: 'person' | 'library') {
+    setFromKind(next);
+    if (current && (current.kind === 'library' ? 'library' : 'person') !== next) set('borrower_id')('');
+  }
 
   function pickStatus(next: BorrowedReadingStatus) {
     setForm((f) => ({
@@ -123,7 +131,7 @@ export function BorrowedSheet({ book, prefill, onClose }: { book: BorrowedBook |
         ) : null}
         <Field label={t('form.title')} value={form.title} onChangeText={set('title')} />
         <Field label={t('borrowed.author')} value={form.author_name} onChangeText={set('author_name')} />
-        <SelectBox label={t('borrowed.from')} value={borrowerName} placeholder={t('borrowed.fromPlaceholder')} onPress={() => setPickerOpen(true)} />
+        <FromKindField kind={effectiveKind} onKind={chooseKind} value={borrowerName} onOpen={() => setPickerOpen(true)} />
         <View style={styles.row}>
           <View style={{ flex: 1 }}>
             <Field label={t('borrowed.borrowedAt')} value={form.borrowed_at} onChangeText={set('borrowed_at')} keyboardType="numbers-and-punctuation" />
@@ -174,13 +182,52 @@ export function BorrowedSheet({ book, prefill, onClose }: { book: BorrowedBook |
       <PickerSheet
         visible={pickerOpen}
         onClose={() => setPickerOpen(false)}
-        title={t('borrowed.from')}
-        options={(borrowers.data ?? []).map((b) => ({ id: b.id, label: b.name }))}
+        title={effectiveKind === 'library' ? t('borrowed.fromLibrary') : t('borrowed.fromPerson')}
+        options={(borrowers.data ?? [])
+          .filter((b) => (b.kind === 'library' ? 'library' : 'person') === effectiveKind)
+          .map((b) => ({ id: b.id, label: b.name }))}
         selected={form.borrower_id ? [form.borrower_id] : []}
         onChange={(ids) => set('borrower_id')(ids[0] ?? '')}
-        onCreate={async (name) => (await createBorrower.mutateAsync({ name })).id}
+        onCreate={async (name) => (await createBorrower.mutateAsync({ name, kind: effectiveKind ?? 'person' })).id}
       />
     </>
+  );
+}
+
+/**
+ * "Kimden ödünç aldınız?" alanı: önce 👤 Kişi / 🏛 Kütüphane seçilir,
+ * ardından o türün listesinden seçim kutusu görünür.
+ */
+export function FromKindField({
+  kind,
+  onKind,
+  value,
+  onOpen,
+}: {
+  kind: 'person' | 'library' | null;
+  onKind: (k: 'person' | 'library') => void;
+  value?: string;
+  onOpen: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <View style={{ marginBottom: space.md }}>
+      <Txt size="small" muted weight="500" style={{ marginBottom: space.sm }}>
+        {t('borrowed.from')}
+      </Txt>
+      <View style={[styles.row, { marginBottom: kind ? space.sm : 0 }]}>
+        <Chip icon="person-outline" label={t('borrowed.person')} active={kind === 'person'} onPress={() => onKind('person')} />
+        <Chip icon="library-outline" label={t('borrowed.library')} active={kind === 'library'} onPress={() => onKind('library')} />
+      </View>
+      {kind ? (
+        <SelectBox
+          label=""
+          value={value}
+          placeholder={kind === 'library' ? t('borrowed.chooseLibrary') : t('borrowed.choosePerson')}
+          onPress={onOpen}
+        />
+      ) : null}
+    </View>
   );
 }
 

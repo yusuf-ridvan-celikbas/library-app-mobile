@@ -19,7 +19,9 @@ import { Button, Chip, errorMessage, Field, IconButton, Loading, SearchBar, Shee
 import { useTheme } from '@/theme/SettingsProvider';
 import { space } from '@/theme/tokens';
 
-type Kind = 'authors' | 'publishers' | 'locations' | 'tags' | 'borrowers';
+// 'libraries' ayrı bir sekme ama aynı tabloyu (borrowers, kind='library') kullanır.
+type Kind = 'authors' | 'publishers' | 'locations' | 'tags' | 'borrowers' | 'libraries';
+const tableFor = (k: Kind) => (k === 'libraries' ? 'borrowers' : k);
 type Row = { id: string; label: string; color?: string; raw: Record<string, unknown> };
 
 /** Yazar / yayınevi / raf / tür / kişi kayıtlarını tek ekranda yönetir. */
@@ -36,9 +38,12 @@ export default function ManageScreen() {
   const tags = useTags();
   const borrowers = useBorrowers();
 
-  const source = { authors, publishers, locations, tags, borrowers }[kind];
+  const source = { authors, publishers, locations, tags, borrowers, libraries: borrowers }[kind];
   const rows: Row[] = useMemo(() => {
-    const data = (source.data ?? []) as unknown as Record<string, unknown>[];
+    const all = (source.data ?? []) as unknown as Record<string, unknown>[];
+    // Kişiler ve kütüphaneler aynı tabloda; her sekme kendi türünü gösterir.
+    const data =
+      kind === 'borrowers' ? all.filter((d) => d.kind !== 'library') : kind === 'libraries' ? all.filter((d) => d.kind === 'library') : all;
     const mapped = data.map((d) => ({
       id: String(d.id),
       label: kind === 'locations' ? String(d.display_name) : String(d.name),
@@ -53,7 +58,7 @@ export default function ManageScreen() {
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <View style={{ padding: space.lg, paddingBottom: 0 }}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space.sm, paddingBottom: space.md }}>
-          {(['authors', 'publishers', 'locations', 'tags', 'borrowers'] as Kind[]).map((k) => (
+          {(['authors', 'publishers', 'locations', 'tags', 'borrowers', 'libraries'] as Kind[]).map((k) => (
             <Chip key={k} label={t(`manage.${k}`)} active={kind === k} onPress={() => setKind(k)} />
           ))}
         </ScrollView>
@@ -89,16 +94,22 @@ export default function ManageScreen() {
 function EditSheet({ kind, row, onClose }: { kind: Kind; row: Row | null; onClose: () => void }) {
   const { t } = useTranslation();
   const { colors } = useTheme();
-  const create = useCreateReference(kind);
-  const update = useUpdateReference(kind);
-  const remove = useDeleteReference(kind);
+  const create = useCreateReference(tableFor(kind));
+  const update = useUpdateReference(tableFor(kind));
+  const remove = useDeleteReference(tableFor(kind));
   const isLocation = kind === 'locations';
   const [name, setName] = useState(String(row?.raw.name ?? ''));
   const [room, setRoom] = useState(String(row?.raw.room ?? ''));
   const [shelf, setShelf] = useState(String(row?.raw.shelf ?? ''));
   const [error, setError] = useState<string | null>(null);
 
-  const payload = isLocation ? { room: room.trim(), shelf: shelf.trim() } : { name: name.trim(), ...(kind === 'tags' && row ? { color: row.color } : {}) };
+  const payload = isLocation
+    ? { room: room.trim(), shelf: shelf.trim() }
+    : {
+        name: name.trim(),
+        ...(kind === 'tags' && row ? { color: row.color } : {}),
+        ...(kind === 'libraries' ? { kind: 'library' } : {}),
+      };
 
   async function submit() {
     setError(null);

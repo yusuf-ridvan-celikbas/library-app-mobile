@@ -15,7 +15,7 @@ export async function listReference(name: ReferenceName): Promise<unknown[]> {
     case 'tags':
       return db.getAllAsync<Tag>('SELECT id, name, slug, color FROM tags ORDER BY name COLLATE NOCASE');
     case 'borrowers':
-      return db.getAllAsync<Borrower>('SELECT id, name, phone, email, notes FROM borrowers WHERE deleted_at IS NULL ORDER BY name COLLATE NOCASE');
+      return db.getAllAsync<Borrower>('SELECT id, name, phone, email, notes, kind FROM borrowers WHERE deleted_at IS NULL ORDER BY name COLLATE NOCASE');
     case 'locations': {
       const rows = await db.getAllAsync<Omit<Location, 'display_name'>>('SELECT id, room, shelf, position, label FROM locations ORDER BY room, shelf');
       return rows.map((l) => ({ ...l, display_name: locationDisplayName(l) }));
@@ -54,8 +54,9 @@ export async function saveReference(name: ReferenceName, id: string | undefined,
 
   const value = requireText(payload.name, 'name');
   if (name === 'borrowers') {
+    const kind = payload.kind === 'library' ? 'library' : 'person';
     if (id) await db.runAsync('UPDATE borrowers SET name = ? WHERE id = ?', value, id);
-    else await db.runAsync('INSERT INTO borrowers (id, name) VALUES (?, ?)', recordId, value);
+    else await db.runAsync('INSERT INTO borrowers (id, name, kind) VALUES (?, ?, ?)', recordId, value, kind);
     return { id: recordId };
   }
 
