@@ -22,7 +22,10 @@
       "permissions": [
         "android.permission.CAMERA"
       ],
-      "package": "com.anonymous.eighteeneleven"
+      "package": "com.anonymous.eighteeneleven",
+      "blockedPermissions": [
+        "android.permission.SYSTEM_ALERT_WINDOW"
+      ]
     },
     "web": {
       "output": "single",
