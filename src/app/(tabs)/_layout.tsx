@@ -4,6 +4,7 @@ import { Tabs } from 'expo-router/js-tabs';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, View, type ColorValue } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { haptic, ListRow, Sheet, type IconName } from '@/components/ui';
 import { useTheme } from '@/theme/SettingsProvider';
@@ -17,6 +18,7 @@ import { space } from '@/theme/tokens';
 export default function TabsLayout() {
   const { t } = useTranslation();
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const [addOpen, setAddOpen] = useState(false);
 
   const icon = (name: IconName, active: IconName) =>
@@ -36,11 +38,15 @@ export default function TabsLayout() {
           headerShown: false,
           tabBarActiveTintColor: colors.accent,
           tabBarInactiveTintColor: colors.textFaint,
+          // Yükseklik Android'in gezinme çubuğu (geri/ana ekran tuşları) kadar
+          // artırılır — aksi halde sekmeler o çubuğun ALTINDA kalıp dokunuşlar
+          // sistem tuşlarına gidiyordu.
           tabBarStyle: {
             backgroundColor: colors.surface,
             borderTopColor: colors.border,
-            height: 84,
+            height: 64 + insets.bottom,
             paddingTop: 6,
+            paddingBottom: insets.bottom + 4,
           },
           tabBarLabelStyle: { fontSize: 11, fontWeight: '500' },
         }}
