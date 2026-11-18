@@ -245,6 +245,15 @@ const tr = {
     name: 'Ad',
     inUse: 'Kullanımda olduğu için silinemedi.',
   },
+  session: {
+    startedAt: 'Başlangıç (YYYY-AA-GG)',
+    finishedAt: 'Bitiş (YYYY-AA-GG)',
+    invalidDate: 'Tarihi YYYY-AA-GG biçiminde girin (ör. 2026-01-31).',
+    clearRating: 'Puanı kaldır',
+    openBook: 'Kitaba git',
+    delete: 'Kaydı sil',
+    deleteTitle: 'Bu okuma kaydı silinsin mi?',
+  },
   widget: {
     heading: 'ŞU AN OKUDUKLARIM',
     empty: 'Şu an okuduğunuz bir kitap yok.',

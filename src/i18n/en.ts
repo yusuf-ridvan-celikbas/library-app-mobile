@@ -247,6 +247,15 @@ const en: Translation = {
     name: 'Name',
     inUse: "Couldn't delete because it's in use.",
   },
+  session: {
+    startedAt: 'Started (YYYY-MM-DD)',
+    finishedAt: 'Finished (YYYY-MM-DD)',
+    invalidDate: 'Enter dates as YYYY-MM-DD (e.g. 2026-01-31).',
+    clearRating: 'Clear rating',
+    openBook: 'Open book',
+    delete: 'Delete entry',
+    deleteTitle: 'Delete this reading entry?',
+  },
   widget: {
     heading: 'CURRENTLY READING',
     empty: "You're not reading anything right now.",

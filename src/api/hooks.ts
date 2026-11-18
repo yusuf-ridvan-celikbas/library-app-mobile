@@ -210,6 +210,14 @@ export function useSaveSession() {
   });
 }
 
+export function useDeleteSession() {
+  const invalidate = useInvalidateLibrary();
+  return useMutation({
+    mutationFn: (id: string) => reading.deleteSession(id),
+    onSuccess: invalidate,
+  });
+}
+
 // ------------------------------------------------------------------ Emanet
 
 export function useLoans() {

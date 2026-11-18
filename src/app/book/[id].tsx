@@ -1,3 +1,4 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -18,6 +19,7 @@ import {
 import type { BookStatus, Borrower, ReadingSession } from '@/api/types';
 import { authorNames, Cover, StarRating, StatusPill } from '@/components/book';
 import { PickerSheet } from '@/components/Picker';
+import { SessionSheet } from '@/components/SessionSheet';
 import { Button, Card, Chip, Divider, ErrorState, Field, IconButton, Loading, SectionTitle, SelectBox, Sheet, Txt, errorMessage } from '@/components/ui';
 import { formatDate } from '@/i18n';
 import { addDays, today } from '@/lib/dates';
@@ -258,47 +260,36 @@ export default function BookDetailScreen() {
   );
 }
 
-/** Bir okuma kaydı: tarih aralığı + puan (dokunarak değiştirilebilir). */
+/** Bir okuma kaydı: dokununca durum/tarih/puan/not düzenlenir ya da silinir. */
 function SessionCard({ session, bookId }: { session: ReadingSession; bookId: string }) {
   const { t } = useTranslation();
-  const saveSession = useSaveSession();
+  const { colors } = useTheme();
+  const [editing, setEditing] = useState(false);
   const range = [session.started_at, session.finished_at].filter(Boolean).map((d) => formatDate(d)).join(' → ');
 
   return (
-    <Card tone="muted">
-      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        <View style={{ flex: 1 }}>
-          <Txt weight="600">{t(`readingStatus.${session.status}`)}</Txt>
-          {range ? (
-            <Txt size="small" muted>
-              {range}
-            </Txt>
-          ) : null}
+    <>
+      <Card tone="muted" onPress={() => setEditing(true)}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
+          <View style={{ flex: 1 }}>
+            <Txt weight="600">{t(`readingStatus.${session.status}`)}</Txt>
+            {range ? (
+              <Txt size="small" muted>
+                {range}
+              </Txt>
+            ) : null}
+          </View>
+          {session.rating ? <StarRating value={session.rating} size={16} /> : null}
+          <Ionicons name="create-outline" size={18} color={colors.textFaint} />
         </View>
-        <StarRating
-          value={session.rating}
-          size={18}
-          onChange={(rating) =>
-            saveSession.mutate({
-              id: session.id,
-              bookId,
-              payload: {
-                status: session.status,
-                started_at: session.started_at,
-                finished_at: session.finished_at,
-                rating,
-                notes: session.notes,
-              },
-            })
-          }
-        />
-      </View>
-      {session.notes ? (
-        <Txt size="small" muted style={{ marginTop: space.sm }}>
-          {session.notes}
-        </Txt>
-      ) : null}
-    </Card>
+        {session.notes ? (
+          <Txt size="small" muted style={{ marginTop: space.sm }}>
+            {session.notes}
+          </Txt>
+        ) : null}
+      </Card>
+      {editing ? <SessionSheet session={session} bookId={bookId} onClose={() => setEditing(false)} /> : null}
+    </>
   );
 }
 

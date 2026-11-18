@@ -111,10 +111,43 @@ export async function saveSession(id: string | undefined, bookId: string, payloa
         nowIso(),
       );
     }
-    if (payload.status === 'finished') {
-      await db.runAsync("UPDATE books SET status = 'read', updated_at = ? WHERE id = ? AND status IN ('available', 'reading')", nowIso(), bookId);
-    }
+    await syncBookStatus(bookId);
   });
+}
+
+/** Okuma kaydını siler ve kitabın durumunu kalan kayıtlara göre yeniden hesaplar. */
+export async function deleteSession(id: string): Promise<void> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<{ book_id: string }>('SELECT book_id FROM reading_sessions WHERE id = ?', id);
+  if (!row) return;
+  await db.withTransactionAsync(async () => {
+    await db.runAsync('DELETE FROM reading_sessions WHERE id = ?', id);
+    await syncBookStatus(row.book_id);
+  });
+}
+
+/**
+ * Kitabın durumunu okuma geçmişine göre düzeltir: bitmiş bir kayıt varsa
+ * "Okundu", devam eden varsa "Okunuyor", hiçbiri yoksa "Rafta".
+ * Ödünçte / hediye / kayıp / arşiv durumlarına dokunulmaz — onlar okuma
+ * geçmişinden bağımsız, elle verilmiş durumlardır.
+ */
+async function syncBookStatus(bookId: string): Promise<void> {
+  const db = await getDb();
+  const flags = await db.getFirstAsync<{ finished: number; reading: number }>(
+    `SELECT EXISTS (SELECT 1 FROM reading_sessions WHERE book_id = ? AND status = 'finished') AS finished,
+            EXISTS (SELECT 1 FROM reading_sessions WHERE book_id = ? AND status = 'in_progress') AS reading`,
+    bookId,
+    bookId,
+  );
+  const next = flags?.finished ? 'read' : flags?.reading ? 'reading' : 'available';
+  await db.runAsync(
+    "UPDATE books SET status = ?, updated_at = ? WHERE id = ? AND status IN ('available', 'reading', 'read') AND status != ?",
+    next,
+    nowIso(),
+    bookId,
+    next,
+  );
 }
 
 // ------------------------------------------------------------------ Hedefler

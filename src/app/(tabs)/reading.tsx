@@ -8,6 +8,7 @@ import { useCreateGoal, useDeleteGoal, useGoals, useSessions } from '@/api/hooks
 import type { GoalPeriod, ReadingGoal, ReadingSession } from '@/api/types';
 import { StarRating } from '@/components/book';
 import { ProgressRing } from '@/components/ProgressRing';
+import { SessionSheet } from '@/components/SessionSheet';
 import { Button, Card, Chip, EmptyState, errorMessage, Field, IconButton, Screen, SectionTitle, Sheet, Txt } from '@/components/ui';
 import { formatDate } from '@/i18n';
 import { useTheme } from '@/theme/SettingsProvider';
@@ -125,9 +126,11 @@ function GoalCard({ goal }: { goal: ReadingGoal }) {
 
 function SessionRow({ session }: { session: ReadingSession }) {
   const { t } = useTranslation();
+  const [editing, setEditing] = useState(false);
   const date = session.finished_at ?? session.started_at;
   return (
-    <Card onPress={session.book ? () => router.push(`/book/${session.book!.id}`) : undefined} style={styles.sessionRow}>
+    <>
+    <Card onPress={() => setEditing(true)} style={styles.sessionRow}>
       <View style={{ flex: 1 }}>
         <Txt serif weight="600" numberOfLines={2}>
           {session.book?.title ?? '—'}
@@ -140,6 +143,10 @@ function SessionRow({ session }: { session: ReadingSession }) {
       </View>
       {session.rating ? <StarRating value={session.rating} size={14} /> : null}
     </Card>
+    {editing && session.book ? (
+      <SessionSheet session={session} bookId={session.book.id} onClose={() => setEditing(false)} showOpenBook />
+    ) : null}
+    </>
   );
 }
 
