@@ -46,6 +46,12 @@ const dark: typeof light = {
 export type Palette = typeof light;
 export const palettes = { light, dark };
 
+/** Klavyenin üstündeki ‹ › Tamam araç çubuğu için uygulama renkleri. */
+export const keyboardToolbarTheme = {
+  light: { primary: light.accent, disabled: light.textFaint, background: light.surfaceMuted, ripple: light.accentSoft },
+  dark: { primary: dark.accent, disabled: dark.textFaint, background: dark.surfaceMuted, ripple: dark.accentSoft },
+};
+
 /** Kitap durumu → [yazı rengi, zemin rengi] — her iki temada da yumuşak. */
 export function statusColors(status: BookStatus, scheme: 'light' | 'dark'): [string, string] {
   const l = scheme === 'light';

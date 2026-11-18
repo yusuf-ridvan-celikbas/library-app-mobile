@@ -6,6 +6,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 
 import { getDb } from '@/db';
 import { updateReadingWidget } from '@/widgets/updateReadingWidget';
@@ -24,11 +25,13 @@ export default function RootLayout() {
   );
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <SettingsProvider>
-        <Navigation />
-      </SettingsProvider>
-    </QueryClientProvider>
+    <KeyboardProvider>
+      <QueryClientProvider client={queryClient}>
+        <SettingsProvider>
+          <Navigation />
+        </SettingsProvider>
+      </QueryClientProvider>
+    </KeyboardProvider>
   );
 }
 

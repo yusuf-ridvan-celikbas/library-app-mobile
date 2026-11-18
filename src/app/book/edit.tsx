@@ -1,7 +1,8 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { KeyboardAwareScrollView, KeyboardToolbar } from 'react-native-keyboard-controller';
 
 import {
   useAuthors,
@@ -19,7 +20,7 @@ import { LocalError } from '@/db';
 import { Button, Chip, Field, Loading, SelectBox, Txt } from '@/components/ui';
 import { isValidDate } from '@/lib/dates';
 import { useTheme } from '@/theme/SettingsProvider';
-import { space } from '@/theme/tokens';
+import { keyboardToolbarTheme, space } from '@/theme/tokens';
 
 type Form = {
   title: string;
@@ -156,12 +157,28 @@ function BookForm({ id, initial }: { id?: string; initial: Form }) {
   }
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <Stack.Screen options={{ title: id ? t('form.editBook') : t('form.newBook') }} />
-      <ScrollView
+    <View style={{ flex: 1 }}>
+      <Stack.Screen
+        options={{
+          title: id ? t('form.editBook') : t('form.newBook'),
+          // Uzun formda Kaydet'e ulaşmak için aşağı kaydırmak gerekmesin.
+          headerRight: () => (
+            <Pressable onPress={submit} disabled={save.isPending} hitSlop={10} style={{ paddingHorizontal: space.sm }}>
+              <Txt weight="600" color={colors.accent}>
+                {t('common.save')}
+              </Txt>
+            </Pressable>
+          ),
+        }}
+      />
+      {/* Odaklanan alan klavyenin üstüne kaydırılır; klavyenin üstündeki araç
+          çubuğu ‹ › ile alanlar arasında geçiş ve "Tamam" ile kapatma sağlar. */}
+      <KeyboardAwareScrollView
+        bottomOffset={space.xxl * 2}
         style={{ backgroundColor: colors.background }}
         contentContainerStyle={{ padding: space.lg, paddingBottom: 60 }}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
       >
         <Field label={t('form.title')} value={form.title} onChangeText={set('title')} error={fieldError('title')} autoFocus={!id} />
         <SelectBox label={t('form.authors')} value={names('authors', form.author_ids)} placeholder={t('form.select')} onPress={() => setPicker('authors')} />
@@ -211,7 +228,8 @@ function BookForm({ id, initial }: { id?: string; initial: Form }) {
           </Txt>
         ) : null}
         <Button label={t('common.save')} onPress={submit} loading={save.isPending} />
-      </ScrollView>
+      </KeyboardAwareScrollView>
+      <KeyboardToolbar theme={keyboardToolbarTheme} doneText={t('common.done')} />
 
       <PickerSheet
         visible={picker === 'authors'}
@@ -252,7 +270,7 @@ function BookForm({ id, initial }: { id?: string; initial: Form }) {
           (await createTag.mutateAsync({ name, color: TAG_COLORS[(tags.data?.length ?? 0) % TAG_COLORS.length] })).id
         }
       />
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 

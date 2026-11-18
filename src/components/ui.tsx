@@ -1,9 +1,10 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Haptics from 'expo-haptics';
-import type { ComponentProps, ReactNode } from 'react';
+import { useEffect, useState, type ComponentProps, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
+  Keyboard,
   Modal,
   Platform,
   Pressable,
@@ -12,12 +13,14 @@ import {
   Text,
   TextInput,
   View,
+  useWindowDimensions,
   type PressableProps,
   type StyleProp,
   type TextInputProps,
   type TextProps,
   type ViewStyle,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { LocalError } from '@/db';
@@ -108,13 +111,17 @@ export function Screen({
   return (
     <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: edgeTop ? insets.top : 0 }}>
       {scroll ? (
-        <ScrollView
+        // Klavye açıldığında odaklanan alanı otomatik olarak klavyenin üstüne kaydırır;
+        // sayfayı sürüklemek klavyeyi kapatır.
+        <KeyboardAwareScrollView
+          bottomOffset={space.xl}
           contentContainerStyle={{ padding: padded ? space.lg : 0, paddingBottom: 120 }}
           refreshControl={refreshControl}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
         >
           {content}
-        </ScrollView>
+        </KeyboardAwareScrollView>
       ) : (
         <View style={{ flex: 1, padding: padded ? space.lg : 0 }}>{content}</View>
       )}
@@ -395,6 +402,22 @@ export function EmptyState({ icon, message, children }: { icon: IconName; messag
 
 // ----------------------------------------------------------- Alt sayfa
 
+/** Açık klavyenin yüksekliği (kapalıyken 0). Modal pencereleri içinde de çalışır. */
+export function useKeyboardHeight(): number {
+  const [height, setHeight] = useState(0);
+  useEffect(() => {
+    const show = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', (e) =>
+      setHeight(e.endCoordinates.height),
+    );
+    const hide = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => setHeight(0));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+  return height;
+}
+
 /** Ekranın altından açılan, sakin bir "sheet" (Modal tabanlı, ek bağımlılık yok). */
 export function Sheet({
   visible,
@@ -411,13 +434,23 @@ export function Sheet({
 }) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const keyboard = useKeyboardHeight();
+  const { height: windowHeight } = useWindowDimensions();
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    // Modal ayrı bir pencere olduğu için klavye onu otomatik itmez (edge-to-edge):
+    // sayfa klavye yüksekliği kadar yukarı kaldırılır ve sığacak şekilde kısaltılır.
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
       <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: colors.overlay }]} onPress={onClose} />
       <View
         style={[
           styles.sheet,
-          { backgroundColor: colors.background, paddingBottom: insets.bottom + space.lg, borderColor: colors.border },
+          {
+            backgroundColor: colors.background,
+            borderColor: colors.border,
+            bottom: keyboard,
+            paddingBottom: keyboard > 0 ? space.md : insets.bottom + space.lg,
+            maxHeight: keyboard > 0 ? windowHeight - keyboard - insets.top - space.lg : '88%',
+          },
         ]}
       >
         <View style={[styles.grabber, { backgroundColor: colors.border }]} />
@@ -430,7 +463,7 @@ export function Sheet({
           </View>
         ) : null}
         {scroll ? (
-          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: space.lg }}>
+          <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={{ paddingBottom: space.lg }}>
             {children}
           </ScrollView>
         ) : (
