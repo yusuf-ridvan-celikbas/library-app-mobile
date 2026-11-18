@@ -7,7 +7,8 @@ import { TABLES_IN_ORDER, type TableName } from '../schema';
  * komutu da üretir — PC'deki veriler telefona bu dosyayla bir kez taşınır.
  */
 export type Backup = {
-  app: 'eighteeneleven';
+  /** 'lilieslib' (yeni) ya da 'eighteeneleven' (uygulamanın eski adı — eski yedekler de okunur). */
+  app: 'lilieslib' | 'eighteeneleven';
   version: 1;
   exported_at: string;
   tables: Partial<Record<TableName, Record<string, unknown>[]>>;
@@ -19,14 +20,15 @@ export async function exportBackup(): Promise<Backup> {
   for (const table of TABLES_IN_ORDER) {
     tables[table] = await db.getAllAsync<Record<string, unknown>>(`SELECT * FROM ${table}`);
   }
-  return { app: 'eighteeneleven', version: 1, exported_at: nowIso(), tables };
+  return { app: 'lilieslib', version: 1, exported_at: nowIso(), tables };
 }
 
 /** Yedeği doğrular ve TÜM verinin yerine koyar (tek transaction — hata olursa hiçbir şey değişmez). */
 export async function importBackup(raw: unknown): Promise<Record<string, number>> {
   const backup = raw as Partial<Backup>;
-  if (!backup || backup.app !== 'eighteeneleven' || backup.version !== 1 || typeof backup.tables !== 'object') {
-    throw new LocalError('INVALID_BACKUP', 'Bu dosya geçerli bir EighteenEleven yedeği değil.');
+  const knownApp = backup?.app === 'lilieslib' || backup?.app === 'eighteeneleven';
+  if (!backup || !knownApp || backup.version !== 1 || typeof backup.tables !== 'object') {
+    throw new LocalError('INVALID_BACKUP', 'Bu dosya geçerli bir Lilies Lib yedeği değil.');
   }
   const db = await getDb();
   const counts: Record<string, number> = {};

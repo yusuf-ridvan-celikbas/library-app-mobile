@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "EighteenEleven",
-    "slug": "eighteen-eleven",
+    "name": "Lilies Lib",
+    "slug": "lilies-lib",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "eighteeneleven",
+    "scheme": "lilieslib",
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon",
@@ -61,7 +61,7 @@
           "widgets": [
             {
               "name": "ReadingWidget",
-              "displayName": "EighteenEleven",
+              "displayName": "Lilies Lib",
               "description": "Şu an okuduğunuz kitaplar / Books you are currently reading",
               "android": {
                 "targetCellWidth": 3,

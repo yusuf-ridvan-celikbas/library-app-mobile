@@ -1,4 +1,4 @@
-# EighteenEleven
+# Lilies Lib
 
 A calm, fully offline **home library tracker** for Android (built with Expo / React Native).
 

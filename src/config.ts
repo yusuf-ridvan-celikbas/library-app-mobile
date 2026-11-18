@@ -5,4 +5,4 @@
  * Not: Uygulama tamamen çevrimdışı çalışır — tüm veriler telefondaki
  * SQLite veritabanındadır (src/db). Sunucu adresi yoktur.
  */
-export const APP_NAME = 'EighteenEleven';
+export const APP_NAME = 'Lilies Lib';

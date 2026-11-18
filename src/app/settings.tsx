@@ -26,7 +26,7 @@ export default function SettingsScreen() {
     setMessage(null);
     try {
       const backup = { ...(await exportBackup()), owner_name: settings.name || undefined };
-      const file = new File(Paths.cache, `eighteeneleven-yedek-${todayYmd()}.json`);
+      const file = new File(Paths.cache, `lilies-lib-yedek-${todayYmd()}.json`);
       if (file.exists) file.delete();
       file.create();
       file.write(JSON.stringify(backup));
