@@ -1,12 +1,13 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, Platform, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { Alert, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
-import { useCreateGoal, useDeleteGoal, useGoals, useSessions } from '@/api/hooks';
-import type { GoalPeriod, ReadingGoal, ReadingSession } from '@/api/types';
+import { useBorrowedBooks, useCreateGoal, useDeleteGoal, useGoals, useSessions } from '@/api/hooks';
+import type { BorrowedBook, GoalPeriod, ReadingGoal, ReadingSession } from '@/api/types';
 import { StarRating } from '@/components/book';
+import { BorrowedSheet } from '@/components/BorrowedSheet';
 import { ProgressRing } from '@/components/ProgressRing';
 import { SessionSheet } from '@/components/SessionSheet';
 import { Button, Card, Chip, EmptyState, errorMessage, Field, IconButton, Screen, SectionTitle, Sheet, Txt } from '@/components/ui';
@@ -20,9 +21,36 @@ export default function ReadingScreen() {
   const goals = useGoals();
   const inProgress = useSessions({ status: 'in_progress' });
   const finished = useSessions({ status: 'finished' });
+  const borrowed = useBorrowedBooks();
   const [goalOpen, setGoalOpen] = useState(false);
+  const params = useLocalSearchParams<{ year?: string }>();
 
-  const history = [...(finished.data ?? [])].sort((a, b) => (b.finished_at ?? '').localeCompare(a.finished_at ?? ''));
+  // Okuma geçmişi = kendi kitaplarımın bitmiş kayıtları + okunup bitirilmiş ödünç kitaplar.
+  type Entry = { key: string; finished_at: string | null; session?: ReadingSession; borrowed?: BorrowedBook };
+  const history: Entry[] = [
+    ...(finished.data ?? []).map((s) => ({ key: `s-${s.id}`, finished_at: s.finished_at, session: s })),
+    ...(borrowed.data ?? []).filter((b) => b.reading_status === 'finished').map((b) => ({ key: `b-${b.id}`, finished_at: b.finished_at, borrowed: b })),
+  ].sort((a, b) => (b.finished_at ?? '').localeCompare(a.finished_at ?? ''));
+  const readingNow: Entry[] = [
+    ...(inProgress.data ?? []).map((s) => ({ key: `s-${s.id}`, finished_at: null, session: s })),
+    ...(borrowed.data ?? []).filter((b) => b.reading_status === 'reading').map((b) => ({ key: `b-${b.id}`, finished_at: null, borrowed: b })),
+  ];
+
+  // Yıl filtresi: varsayılan bu yıl (bu yıl hiç kayıt yoksa "Tümü").
+  // Ana sayfadaki "bitirilen" sayısına dokunulunca ?year=2026 ile gelinir.
+  const currentYear = String(new Date().getFullYear());
+  const years = [...new Set(history.map((s) => s.finished_at?.slice(0, 4)).filter((y): y is string => !!y))].sort((a, b) => b.localeCompare(a));
+  const hasUndated = history.some((s) => !s.finished_at);
+  const [year, setYear] = useState<string>(params.year ?? currentYear);
+  const [lastParam, setLastParam] = useState(params.year);
+  if (params.year !== lastParam) {
+    setLastParam(params.year);
+    if (params.year) setYear(params.year);
+  }
+  const effectiveYear = year === 'all' || year === 'undated' || years.includes(year) ? year : 'all';
+  const visible = history.filter((s) =>
+    effectiveYear === 'all' ? true : effectiveYear === 'undated' ? !s.finished_at : s.finished_at?.startsWith(effectiveYear),
+  );
 
   return (
     <Screen
@@ -32,6 +60,7 @@ export default function ReadingScreen() {
         <RefreshControl
           refreshing={goals.isRefetching || finished.isRefetching}
           onRefresh={() => {
+            void borrowed.refetch();
             void goals.refetch();
             void inProgress.refetch();
             void finished.refetch();
@@ -55,24 +84,34 @@ export default function ReadingScreen() {
         </Card>
       )}
 
-      {inProgress.data?.length ? (
+      {readingNow.length ? (
         <>
           <SectionTitle>{t('reading.inProgress')}</SectionTitle>
           <View style={{ gap: space.sm }}>
-            {inProgress.data.map((s) => (
-              <SessionRow key={s.id} session={s} />
-            ))}
+            {readingNow.map((e) => (e.session ? <SessionRow key={e.key} session={e.session} /> : <BorrowedRow key={e.key} book={e.borrowed!} />))}
           </View>
         </>
       ) : null}
 
       <SectionTitle>{t('reading.history')}</SectionTitle>
       {history.length ? (
-        <View style={{ gap: space.sm }}>
-          {history.map((s) => (
-            <SessionRow key={s.id} session={s} />
-          ))}
-        </View>
+        <>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.yearChips}>
+            {years.map((y) => (
+              <Chip key={y} label={y} active={effectiveYear === y} onPress={() => setYear(y)} />
+            ))}
+            <Chip label={t('common.all')} active={effectiveYear === 'all'} onPress={() => setYear('all')} />
+            {hasUndated ? <Chip label={t('reading.undated')} active={effectiveYear === 'undated'} onPress={() => setYear('undated')} /> : null}
+          </ScrollView>
+          <Txt size="small" muted style={{ marginBottom: space.sm }}>
+            {effectiveYear === 'all' || effectiveYear === 'undated'
+              ? t('common.books', { count: visible.length })
+              : t('reading.finishedInYear', { count: visible.length, year: effectiveYear })}
+          </Txt>
+          <View style={{ gap: space.sm }}>
+            {visible.map((e) => (e.session ? <SessionRow key={e.key} session={e.session} /> : <BorrowedRow key={e.key} book={e.borrowed!} />))}
+          </View>
+        </>
       ) : (
         <EmptyState icon="book-outline" message={t('reading.emptyHistory')} />
       )}
@@ -137,7 +176,11 @@ function SessionRow({ session }: { session: ReadingSession }) {
         </Txt>
         {date ? (
           <Txt size="small" muted>
-            {session.status === 'finished' ? t('reading.finishedOn', { date: formatDate(date) }) : formatDate(date)}
+            {session.started_at && session.finished_at
+              ? `${formatDate(session.started_at)} → ${formatDate(session.finished_at)}`
+              : session.status === 'finished'
+                ? t('reading.finishedOn', { date: formatDate(date) })
+                : t('reading.startedOn', { date: formatDate(date) })}
           </Txt>
         ) : null}
       </View>
@@ -146,6 +189,45 @@ function SessionRow({ session }: { session: ReadingSession }) {
     {editing && session.book ? (
       <SessionSheet session={session} bookId={session.book.id} onClose={() => setEditing(false)} showOpenBook />
     ) : null}
+    </>
+  );
+}
+
+/** Ödünç alınmış (ör. kütüphane) bir kitabın geçmiş satırı; dokununca ödünç kaydı düzenlenir. */
+function BorrowedRow({ book }: { book: BorrowedBook }) {
+  const { t } = useTranslation();
+  const { colors } = useTheme();
+  const [editing, setEditing] = useState(false);
+  const dates =
+    book.started_at && book.finished_at
+      ? `${formatDate(book.started_at)} → ${formatDate(book.finished_at)}`
+      : book.finished_at
+        ? t('reading.finishedOn', { date: formatDate(book.finished_at) })
+        : book.started_at
+          ? t('reading.startedOn', { date: formatDate(book.started_at) })
+          : '';
+  return (
+    <>
+      <Card onPress={() => setEditing(true)} style={styles.sessionRow}>
+        <View style={{ flex: 1 }}>
+          <Txt serif weight="600" numberOfLines={2}>
+            {book.title}
+          </Txt>
+          {dates ? (
+            <Txt size="small" muted>
+              {dates}
+            </Txt>
+          ) : null}
+          <View style={styles.borrowedTag}>
+            <Ionicons name="arrow-down-circle-outline" size={13} color={colors.accent} />
+            <Txt size="tiny" color={colors.accent} weight="600">
+              {t('reading.borrowedFrom', { name: book.borrower.name })}
+            </Txt>
+          </View>
+        </View>
+        {book.rating ? <StarRating value={book.rating} size={14} /> : null}
+      </Card>
+      {editing ? <BorrowedSheet book={book} onClose={() => setEditing(false)} /> : null}
     </>
   );
 }
@@ -190,6 +272,8 @@ function NewGoalSheet({ visible, onClose }: { visible: boolean; onClose: () => v
 }
 
 const styles = StyleSheet.create({
+  yearChips: { gap: space.sm, paddingBottom: space.md },
+  borrowedTag: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   goalRow: { flexDirection: 'row', alignItems: 'center', gap: space.lg },
   sessionRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.md },
 });

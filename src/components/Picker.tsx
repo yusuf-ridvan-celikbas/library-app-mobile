@@ -110,7 +110,10 @@ export function PickerSheet({
           data={filtered}
           keyExtractor={(o) => o.id}
           keyboardShouldPersistTaps="handled"
-          style={{ marginTop: space.sm, maxHeight: 420 }}
+          // Sabit yükseklik yerine küçülebilir: klavye açıkken arama kutusu, sonuçlar
+          // ve Tamam düğmesi birlikte klavyenin üstüne sığar.
+          style={{ marginTop: space.sm, maxHeight: 420, flexShrink: 1 }}
+          keyboardDismissMode="on-drag"
           ListEmptyComponent={
             <Txt muted center style={{ padding: space.xl }}>
               {t('form.noResults')}

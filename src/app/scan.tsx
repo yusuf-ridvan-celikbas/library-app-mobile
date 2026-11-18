@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useScanIsbn } from '@/api/hooks';
 import { Button, errorMessage, Field, Screen, Txt } from '@/components/ui';
 import { LocalError } from '@/db';
+import { lookupIsbn } from '@/lib/isbn';
 import { useTheme } from '@/theme/SettingsProvider';
 import { radius, space } from '@/theme/tokens';
 
@@ -32,6 +33,33 @@ export default function ScanScreen() {
   const locked = useRef(false);
   const [manualIsbn, setManualIsbn] = useState('');
   const [result, setResult] = useState<Result | null>(null);
+  // mode=borrowed: ödünç alınan (ör. kütüphane) kitap — sadece bilgiyi getir,
+  // kitaplığa EKLEME; Ödünç Aldıklarım formunu doldurarak aç.
+  const { mode } = useLocalSearchParams<{ mode?: string }>();
+  const borrowedMode = mode === 'borrowed';
+  const [looking, setLooking] = useState(false);
+
+  async function lookupForBorrowed(isbn: string) {
+    setLooking(true);
+    try {
+      const info = await lookupIsbn(isbn);
+      router.replace({
+        pathname: '/borrowed',
+        params: {
+          add: '1',
+          ts: String(Date.now()),
+          title: info.title,
+          author: info.authorNames.join(', '),
+          pages: info.pageCount ? String(info.pageCount) : '',
+        },
+      });
+    } catch (err) {
+      if (err instanceof LocalError && err.code === 'ISBN_NOT_FOUND') setResult({ kind: 'notFound', isbn });
+      else setResult({ kind: 'error', message: errorMessage(err, t) });
+    } finally {
+      setLooking(false);
+    }
+  }
 
   async function lookup(raw: string) {
     const isbn = raw.replace(/[^0-9Xx]/g, '');
@@ -39,6 +67,10 @@ export default function ScanScreen() {
     locked.current = true;
     setResult(null);
     if (Platform.OS !== 'web') void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    if (borrowedMode) {
+      await lookupForBorrowed(isbn);
+      return;
+    }
     try {
       const book = await scan.mutateAsync(isbn);
       router.replace(`/book/${book.id}`);
@@ -68,7 +100,14 @@ export default function ScanScreen() {
       ) : result.kind === 'notFound' ? (
         <>
           <Txt center>{t('scan.notFound')}</Txt>
-          <Button label={t('scan.addManually')} onPress={() => router.replace({ pathname: '/book/edit', params: { isbn: result.isbn } })} />
+          <Button
+            label={t('scan.addManually')}
+            onPress={() =>
+              borrowedMode
+                ? router.replace({ pathname: '/borrowed', params: { add: '1', ts: String(Date.now()) } })
+                : router.replace({ pathname: '/book/edit', params: { isbn: result.isbn } })
+            }
+          />
         </>
       ) : (
         <Txt center color={colors.danger}>
@@ -96,7 +135,7 @@ export default function ScanScreen() {
           {t('scan.unsupportedWeb')}
         </Txt>
         {manual}
-        {scan.isPending ? <ActivityIndicator color={colors.accent} /> : resultPanel}
+        {(scan.isPending || looking) ? <ActivityIndicator color={colors.accent} /> : resultPanel}
       </Screen>
     );
   }
@@ -124,14 +163,14 @@ export default function ScanScreen() {
         style={StyleSheet.absoluteFill}
         facing="back"
         barcodeScannerSettings={{ barcodeTypes: ['ean13', 'ean8', 'upc_a'] }}
-        onBarcodeScanned={result || scan.isPending ? undefined : (e: BarcodeScanningResult) => lookup(e.data)}
+        onBarcodeScanned={result || (scan.isPending || looking) ? undefined : (e: BarcodeScanningResult) => lookup(e.data)}
       />
       <View style={styles.frameWrap} pointerEvents="none">
         <View style={styles.frame} />
         <Txt color="#fff" center style={{ marginTop: space.lg }}>
-          {scan.isPending ? t('scan.looking') : t('scan.hint')}
+          {(scan.isPending || looking) ? t('scan.looking') : t('scan.hint')}
         </Txt>
-        {scan.isPending ? <ActivityIndicator color="#fff" style={{ marginTop: space.md }} /> : null}
+        {(scan.isPending || looking) ? <ActivityIndicator color="#fff" style={{ marginTop: space.md }} /> : null}
       </View>
       <View style={[styles.bottom, { paddingBottom: insets.bottom + space.lg }]}>{resultPanel}</View>
     </View>

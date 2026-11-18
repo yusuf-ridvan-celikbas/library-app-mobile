@@ -7,6 +7,7 @@ import { Alert, Platform, RefreshControl, ScrollView, StyleSheet, View } from 'r
 import {
   useBook,
   useBorrowers,
+  useConvertToBorrowed,
   useCreateReference,
   useDeleteBook,
   useLendBook,
@@ -44,6 +45,7 @@ export default function BookDetailScreen() {
   const [finishOpen, setFinishOpen] = useState(false);
   const [lendOpen, setLendOpen] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
+  const [convertOpen, setConvertOpen] = useState(false);
   const [rating, setRating] = useState<number | null>(null);
   const [notes, setNotes] = useState('');
 
@@ -234,6 +236,16 @@ export default function BookDetailScreen() {
           <Button label={t('book.changeStatus')} variant="secondary" icon="swap-horizontal" style={{ flex: 1 }} onPress={() => setStatusOpen(true)} />
           <Button label={t('common.delete')} variant="danger" icon="trash-outline" onPress={confirmDelete} />
         </View>
+        {/* Yanlışlıkla kendi kitabı olarak eklenmiş ödünç (ör. kütüphane) kitabı taşı */}
+        {b.status !== 'loaned' && b.status !== 'gifted' ? (
+          <Button
+            label={t('book.convertToBorrowed')}
+            variant="ghost"
+            icon="arrow-down-circle-outline"
+            style={{ marginTop: space.sm }}
+            onPress={() => setConvertOpen(true)}
+          />
+        ) : null}
       </ScrollView>
 
       {/* Bitirme: puan + not */}
@@ -256,6 +268,7 @@ export default function BookDetailScreen() {
       </Sheet>
 
       <LendSheet visible={lendOpen} onClose={() => setLendOpen(false)} bookId={b.id} />
+      {convertOpen ? <ConvertToBorrowedSheet bookId={b.id} title={b.title} onClose={() => setConvertOpen(false)} /> : null}
     </>
   );
 }
@@ -289,6 +302,59 @@ function SessionCard({ session, bookId }: { session: ReadingSession; bookId: str
         ) : null}
       </Card>
       {editing ? <SessionSheet session={session} bookId={bookId} onClose={() => setEditing(false)} /> : null}
+    </>
+  );
+}
+
+/** "Ödünç aldığım kitaba dönüştür": kimden alındığı + (isteğe bağlı) iade tarihi. */
+function ConvertToBorrowedSheet({ bookId, title, onClose }: { bookId: string; title: string; onClose: () => void }) {
+  const { t } = useTranslation();
+  const { colors } = useTheme();
+  const borrowers = useBorrowers();
+  const createBorrower = useCreateReference<Borrower>('borrowers');
+  const convert = useConvertToBorrowed();
+  const [borrowerId, setBorrowerId] = useState<string | null>(null);
+  const [dueAt, setDueAt] = useState('');
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const borrowerName = borrowers.data?.find((p) => p.id === borrowerId)?.name;
+
+  async function submit() {
+    if (!borrowerId) return;
+    setError(null);
+    try {
+      await convert.mutateAsync({ bookId, borrowerId, dueAt: dueAt.trim() || null });
+      onClose();
+      router.replace('/borrowed');
+    } catch (err) {
+      setError(errorMessage(err, t));
+    }
+  }
+
+  return (
+    <>
+      <Sheet visible={!pickerOpen} onClose={onClose} title={t('book.convertToBorrowed')}>
+        <Txt muted style={{ marginBottom: space.lg }}>
+          {t('book.convertDesc', { title })}
+        </Txt>
+        <SelectBox label={t('borrowed.from')} value={borrowerName} placeholder={t('borrowed.fromPlaceholder')} onPress={() => setPickerOpen(true)} />
+        <Field label={`${t('loans.dueAt')} (${t('common.optional')})`} value={dueAt} onChangeText={setDueAt} placeholder="2026-12-31" keyboardType="numbers-and-punctuation" />
+        {error ? (
+          <Txt size="small" color={colors.danger} style={{ marginBottom: space.md }}>
+            {error}
+          </Txt>
+        ) : null}
+        <Button label={t('book.convertConfirm')} onPress={submit} disabled={!borrowerId} loading={convert.isPending} />
+      </Sheet>
+      <PickerSheet
+        visible={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        title={t('borrowed.from')}
+        options={(borrowers.data ?? []).map((p) => ({ id: p.id, label: p.name }))}
+        selected={borrowerId ? [borrowerId] : []}
+        onChange={(ids) => setBorrowerId(ids[0] ?? null)}
+        onCreate={async (name) => (await createBorrower.mutateAsync({ name })).id}
+      />
     </>
   );
 }

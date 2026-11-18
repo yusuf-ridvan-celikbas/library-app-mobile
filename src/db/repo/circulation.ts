@@ -219,3 +219,60 @@ export async function convertWishlistItem(id: string): Promise<Book> {
   await db.runAsync('DELETE FROM wishlist_items WHERE id = ?', id);
   return book;
 }
+
+// ------------------------------------------- Kendi kitabını ödünce dönüştür
+
+/**
+ * Yanlışlıkla "kendi kitabım" olarak eklenmiş, aslında ödünç alınmış
+ * (ör. kütüphaneden) bir kitabı Ödünç Aldıklarım'a taşır. Okuma bilgileri
+ * (tarihler, puan, not), hedef bağlantıları ve süre kayıtları korunur;
+ * kitabın kendi okuma kayıtları silinir ki istatistiklerde İKİ KEZ sayılmasın.
+ */
+export async function convertBookToBorrowed(bookId: string, borrowerId: string, dueAt: string | null): Promise<string> {
+  const db = await getDb();
+  const book = await db.getFirstAsync<{ title: string; page_count: number | null }>('SELECT title, page_count FROM books WHERE id = ? AND deleted_at IS NULL', bookId);
+  if (!book) throw new LocalError('NOT_FOUND', 'Kitap bulunamadı.');
+  const activeLoan = await db.getFirstAsync("SELECT id FROM loans WHERE book_id = ? AND status = 'active'", bookId);
+  if (activeLoan) throw new LocalError('BOOK_ALREADY_LOANED', 'Bu kitap şu anda birine ödünç verilmiş; önce iade alın.');
+
+  const authors = await db.getAllAsync<{ name: string }>(
+    'SELECT a.name FROM book_author ba JOIN authors a ON a.id = ba.author_id WHERE ba.book_id = ? ORDER BY ba.sort_order',
+    bookId,
+  );
+  const sessions = await db.getAllAsync<{ id: string; status: string; started_at: string | null; finished_at: string | null; rating: number | null; notes: string | null }>(
+    'SELECT id, status, started_at, finished_at, rating, notes FROM reading_sessions WHERE book_id = ? ORDER BY COALESCE(finished_at, started_at, created_at) DESC',
+    bookId,
+  );
+  const finished = sessions.find((s) => s.status === 'finished');
+  const reading = sessions.find((s) => s.status === 'in_progress');
+  const source = finished ?? reading;
+  const id = ulid();
+
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(
+      `INSERT INTO borrowed_books (id, title, author_name, page_count, borrower_id, borrowed_at, due_at, reading_status, started_at, finished_at,
+       rating, reading_notes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      id,
+      book.title,
+      authors.map((a) => a.name).join(', ') || null,
+      book.page_count,
+      borrowerId,
+      source?.started_at ?? todayYmd(),
+      dueAt,
+      finished ? 'finished' : reading ? 'reading' : 'not_started',
+      source?.started_at ?? null,
+      finished?.finished_at ?? null,
+      finished?.rating ?? null,
+      source?.notes ?? null,
+      nowIso(),
+    );
+    // Süre kayıtları ve hedef listeleri yeni ödünç kaydına bağlanır.
+    for (const s of sessions) {
+      await db.runAsync('UPDATE reading_time_logs SET borrowed_book_id = ?, reading_session_id = NULL WHERE reading_session_id = ?', id, s.id);
+    }
+    await db.runAsync('UPDATE reading_goal_books SET borrowed_book_id = ?, book_id = NULL WHERE book_id = ?', id, bookId);
+    await db.runAsync('DELETE FROM reading_sessions WHERE book_id = ?', bookId);
+    await db.runAsync('UPDATE books SET deleted_at = ?, isbn10 = NULL, isbn13 = NULL WHERE id = ?', nowIso(), bookId);
+  });
+  return id;
+}

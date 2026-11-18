@@ -26,9 +26,11 @@ export default function TabsLayout() {
       return <Ionicons name={focused ? active : name} size={24} color={color as string} />;
     };
 
-  function go(path: '/scan' | '/book/edit' | '/wishlist') {
+  function go(path: '/scan' | '/book/edit' | '/wishlist' | '/borrowed') {
     setAddOpen(false);
-    router.push(path === '/wishlist' ? { pathname: '/wishlist', params: { add: '1' } } : path);
+    if (path === '/wishlist') router.push({ pathname: '/wishlist', params: { add: '1' } });
+    else if (path === '/borrowed') router.push({ pathname: '/borrowed', params: { add: '1', ts: String(Date.now()) } });
+    else router.push(path);
   }
 
   return (
@@ -84,6 +86,7 @@ export default function TabsLayout() {
         <View style={{ gap: space.sm }}>
           <ListRow icon="barcode-outline" label={t('add.scan')} detail={t('add.scanDesc')} onPress={() => go('/scan')} />
           <ListRow icon="create-outline" label={t('add.manual')} detail={t('add.manualDesc')} onPress={() => go('/book/edit')} />
+          <ListRow icon="arrow-down-circle-outline" label={t('add.borrowed')} detail={t('add.borrowedDesc')} onPress={() => go('/borrowed')} />
           <ListRow icon="bookmark-outline" label={t('add.wishlist')} detail={t('add.wishlistDesc')} onPress={() => go('/wishlist')} />
         </View>
       </Sheet>

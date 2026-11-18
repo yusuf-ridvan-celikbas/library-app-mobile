@@ -2,7 +2,7 @@ import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
-import { useBooks, useGoals, useOverview, useRecentBooks, useReminders, useStats } from '@/api/hooks';
+import { useBooks, useBorrowedBooks, useGoals, useOverview, useRecentBooks, useReminders, useStats } from '@/api/hooks';
 import { authorNames, Cover } from '@/components/book';
 import { ProgressRing } from '@/components/ProgressRing';
 import { ReminderRow } from '@/components/ReminderRow';
@@ -22,6 +22,8 @@ export default function HomeScreen() {
   const reminders = useReminders();
 
   const readingBooks = reading.data?.pages.flatMap((p) => p.data) ?? [];
+  const borrowed = useBorrowedBooks();
+  const readingBorrowed = (borrowed.data ?? []).filter((b) => b.reading_status === 'reading' && !b.is_returned);
   const goal = goals.data?.find((g) => g.period_type === 'yearly') ?? goals.data?.[0];
   const year = stats.data?.year_stats;
   const firstName = settings.name.split(' ')[0];
@@ -70,11 +72,15 @@ export default function HomeScreen() {
             <Txt size="small" muted weight="600">
               {t('home.thisYear', { year: stats.data?.selected_year ?? new Date().getFullYear() })}
             </Txt>
-            <View style={styles.statsRow}>
+            {/* Dokununca: bu yıl bitirilen kitapların listesi (Okuma → geçmiş, yıl filtreli) */}
+            <Pressable
+              style={styles.statsRow}
+              onPress={() => router.push({ pathname: '/reading', params: { year: String(stats.data?.selected_year ?? new Date().getFullYear()) } })}
+            >
               <Stat value={year?.books_finished ?? '–'} label={t('home.finished')} />
               <Stat value={year?.pages_read ?? '–'} label={t('home.pagesRead')} />
               <Stat value={year?.average_daily_pages ?? '–'} label={t('home.perDay')} />
-            </View>
+            </Pressable>
             {!goal ? (
               <Pressable onPress={() => router.push('/reading')}>
                 <Txt size="small" color={colors.accent} weight="600">
@@ -88,7 +94,7 @@ export default function HomeScreen() {
 
       {/* Şu an okunanlar */}
       <SectionTitle>{t('home.nowReading')}</SectionTitle>
-      {readingBooks.length ? (
+      {readingBooks.length || readingBorrowed.length ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space.md }}>
           {readingBooks.map((b) => (
             <Card key={b.id} onPress={() => router.push(`/book/${b.id}`)} style={styles.readingCard}>
@@ -99,6 +105,19 @@ export default function HomeScreen() {
                 </Txt>
                 <Txt size="small" muted numberOfLines={1}>
                   {authorNames(b)}
+                </Txt>
+              </View>
+            </Card>
+          ))}
+          {readingBorrowed.map((b) => (
+            <Card key={b.id} onPress={() => router.push('/borrowed')} style={styles.readingCard}>
+              <Cover book={{ title: b.title, cover_image_source_url: null }} width={64} />
+              <View style={{ flex: 1, justifyContent: 'center' }}>
+                <Txt serif weight="600" numberOfLines={3}>
+                  {b.title}
+                </Txt>
+                <Txt size="small" muted numberOfLines={1}>
+                  {t('reading.borrowedFrom', { name: b.borrower.name })}
                 </Txt>
               </View>
             </Card>

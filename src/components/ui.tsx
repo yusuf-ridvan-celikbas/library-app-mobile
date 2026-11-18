@@ -467,7 +467,7 @@ export function Sheet({
             {children}
           </ScrollView>
         ) : (
-          children
+          <View style={{ flexShrink: 1 }}>{children}</View>
         )}
       </View>
     </Modal>

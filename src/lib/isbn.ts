@@ -8,7 +8,7 @@ import { findOrCreateByName } from '@/db/repo/reference';
  * bulamazsa Google Books'a sorar (backend'deki fallback_chain ile aynı
  * sıra ve alanlar). İnternet gerekir, PC gerekmez.
  */
-type LookupResult = {
+export type LookupResult = {
   title: string;
   subtitle: string | null;
   description: string | null;
@@ -98,16 +98,20 @@ function normalizeDate(value: string | null): string | null {
   return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`;
 }
 
-export async function lookupAndCreateBook(rawIsbn: string): Promise<Book> {
+function normalizeIsbn(rawIsbn: string): string {
   const isbn = rawIsbn.replace(/[^0-9Xx]/g, '').toUpperCase();
   if (isbn.length !== 10 && isbn.length !== 13) {
     throw new LocalError('VALIDATION_FAILED', 'Geçersiz ISBN.', { field: 'isbn' });
   }
-  const existing = await findBookIdByIsbn(isbn);
-  if (existing) {
-    throw new LocalError('BOOK_ALREADY_EXISTS', 'Bu ISBN numarasına sahip bir kitap zaten kütüphanenizde kayıtlı.', { book_id: existing });
-  }
+  return isbn;
+}
 
+/**
+ * Sadece bilgiyi getirir, kitap OLUŞTURMAZ — ödünç alınan (ör. kütüphane)
+ * kitapların başlık/yazar/sayfa bilgisini doldurmak için.
+ */
+export async function lookupIsbn(rawIsbn: string): Promise<LookupResult> {
+  const isbn = normalizeIsbn(rawIsbn);
   let result: LookupResult | null = null;
   let reachedAny = false;
   for (const provider of [openLibrary, googleBooks]) {
@@ -124,6 +128,17 @@ export async function lookupAndCreateBook(rawIsbn: string): Promise<Book> {
       ? new LocalError('ISBN_NOT_FOUND', 'Bu ISBN için bilgi bulunamadı.')
       : new LocalError('NETWORK_ERROR', 'İnternet bağlantısı yok.');
   }
+  return result;
+}
+
+export async function lookupAndCreateBook(rawIsbn: string): Promise<Book> {
+  const isbn = normalizeIsbn(rawIsbn);
+  const existing = await findBookIdByIsbn(isbn);
+  if (existing) {
+    throw new LocalError('BOOK_ALREADY_EXISTS', 'Bu ISBN numarasına sahip bir kitap zaten kütüphanenizde kayıtlı.', { book_id: existing });
+  }
+
+  const result = await lookupIsbn(isbn);
 
   const authorIds: string[] = [];
   for (const name of result.authorNames) {

@@ -323,6 +323,7 @@ function useInvalidateBorrowed() {
     void qc.invalidateQueries({ queryKey: keys.reminders });
     void qc.invalidateQueries({ queryKey: ['stats'] });
     void qc.invalidateQueries({ queryKey: keys.goals });
+    void updateReadingWidget();
   };
 }
 
@@ -339,6 +340,18 @@ export function useReturnBorrowedBook() {
   return useMutation({
     mutationFn: (id: string) => circulation.returnBorrowed(id),
     onSuccess: invalidate,
+  });
+}
+
+export function useConvertToBorrowed() {
+  const invalidate = useInvalidateLibrary();
+  const invalidateBorrowed = useInvalidateBorrowed();
+  return useMutation({
+    mutationFn: (p: { bookId: string; borrowerId: string; dueAt: string | null }) => circulation.convertBookToBorrowed(p.bookId, p.borrowerId, p.dueAt),
+    onSuccess: () => {
+      void invalidate();
+      invalidateBorrowed();
+    },
   });
 }
 
