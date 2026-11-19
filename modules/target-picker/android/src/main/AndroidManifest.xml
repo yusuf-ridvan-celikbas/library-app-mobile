@@ -1,0 +1,21 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <application>
+    <!--
+      Target <-> Lilies Lib picker, contract v1 (Target repo: docs/lilies-lib-contract.md).
+      Exported so Target (a different signing key) can start it for a result.
+      It only returns the one book the user taps; nothing is shared otherwise.
+    -->
+    <activity
+      android:name="com.lilieslib.targetpicker.PickBookActivity"
+      android:exported="true"
+      android:label="Lilies Lib"
+      android:theme="@android:style/Theme.Material.Light.NoActionBar"
+      android:windowSoftInputMode="adjustResize"
+      android:excludeFromRecents="true">
+      <intent-filter>
+        <action android:name="com.ridvan.target.action.PICK_BOOK" />
+        <category android:name="android.intent.category.DEFAULT" />
+      </intent-filter>
+    </activity>
+  </application>
+</manifest>
