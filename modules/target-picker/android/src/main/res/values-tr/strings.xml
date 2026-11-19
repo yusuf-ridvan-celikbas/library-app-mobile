@@ -1,0 +1,4 @@
+<resources>
+  <string name="lilies_read_library_label">Lilies Lib kütüphanenizi okuma</string>
+  <string name="lilies_read_library_description">Bir uygulamanın (Target) Lilies Lib kütüphanenizdeki kitapların başlık, yazar, sayfa sayısı ve yayınevi bilgilerini okumasına izin verir. Hiçbir şeyi değiştiremez.</string>
+</resources>

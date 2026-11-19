@@ -6,8 +6,10 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { AppState } from 'react-native';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 
+import { useInvalidateLibrary } from '@/api/hooks';
 import { getDb } from '@/db';
 import { updateReadingWidget } from '@/widgets/updateReadingWidget';
 import { SettingsProvider, useSettings } from '@/theme/SettingsProvider';
@@ -35,6 +37,34 @@ export default function RootLayout() {
   );
 }
 
+/**
+ * Target'tan "Lilies Lib'e gönder" ile kitap eklenebilir (modules/target-picker, ayrı süreç).
+ * Sorgular hiç bayatlamadığı için (staleTime: Infinity) uygulama öne geldiğinde kitaplar
+ * tablosu değişmiş mi bakılır; değiştiyse listeler tazelenir.
+ */
+function useRefreshOnExternalChanges(dbReady: boolean) {
+  const invalidate = useInvalidateLibrary();
+  useEffect(() => {
+    if (!dbReady) return;
+    const signature = async () => {
+      const db = await getDb();
+      const row = await db.getFirstAsync<{ n: number; u: string | null }>('SELECT COUNT(*) AS n, MAX(updated_at) AS u FROM books');
+      return `${row?.n}|${row?.u}`;
+    };
+    let last: string | null = null;
+    void signature().then((s) => (last = s));
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') return;
+      void signature().then((s) => {
+        if (last !== null && s !== last) void invalidate();
+        last = s;
+      });
+    });
+    return () => sub.remove();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dbReady]);
+}
+
 function Navigation() {
   const { t } = useTranslation();
   const { ready, colors, scheme } = useSettings();
@@ -47,6 +77,8 @@ function Navigation() {
       void updateReadingWidget();
     });
   }, []);
+
+  useRefreshOnExternalChanges(dbReady);
 
   const booting = !ready || !dbReady;
   useEffect(() => {

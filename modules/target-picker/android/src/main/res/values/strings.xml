@@ -1,0 +1,4 @@
+<resources>
+  <string name="lilies_read_library_label">read your Lilies Lib library</string>
+  <string name="lilies_read_library_description">Lets an app (Target) read the titles, authors, page counts and publishers of the books in your Lilies Lib library. It cannot change anything.</string>
+</resources>
